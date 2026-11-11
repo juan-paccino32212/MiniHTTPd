@@ -1,5 +1,5 @@
 #include <stdio.h>
-//#include "server.h"
+#include "server.h"
 
 int main(void) {
     printf("Iniciando servidor nimiHTTPd...\n");

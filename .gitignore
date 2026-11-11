@@ -1,0 +1,7 @@
+# Archivos compilados
+*.o
+minihttpd
+
+# Archivos temporales
+*.tmp
+*~
