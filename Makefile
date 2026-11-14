@@ -4,9 +4,8 @@ CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinclude
 
 TARGET = minihttpd
 
-SOURCES = src/main.c src/server.c
-
-OBJECTS = src/main.o src/server.o
+SOURCES = src/main.c src/server.c src/http.c
+OBJECTS = src/main.o src/server.o src/http.o
 
 all: $(TARGET)
 

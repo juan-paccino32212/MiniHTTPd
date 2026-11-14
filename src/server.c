@@ -5,12 +5,14 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <netinet/in.h>
 
 #include "server.h"
+#include "http.h"
 
 #define SERVER_PORT 8080
 #define MAX_EVENTS 64
@@ -67,25 +69,27 @@ static int append_client_data(Client *client,
 }
 
 /* Recibir datos de un cliente */
-static int handle_client_read(Client *client)
-{
+
+static int handle_client_read(Client *client) {
     char buffer[READ_BUFFER_SIZE];
 
     while (1) {
-        ssize_t bytes = recv(client->fd, buffer,
-                             sizeof(buffer), 0);
+        ssize_t bytes = recv(client->fd,
+            buffer, sizeof(buffer),0);
 
         if (bytes > 0) {
             if (append_client_data(client, buffer,
-                                   (size_t)bytes) == -1) {
-                fprintf(stderr, "Buffer del cliente excedido\n");
+                    (size_t)bytes) == -1) {
+                fprintf(stderr,
+                        "Buffer del cliente excedido\n");
+
                 return -1;
             }
 
             printf("Cliente fd=%d: %zd bytes recibidos "
                    "(total: %zu)\n",
-                   client->fd, bytes, client->read_size);
-
+                   client->fd,
+                   bytes, client->read_size);
             continue;
         }
 
@@ -102,6 +106,115 @@ static int handle_client_read(Client *client)
         return -1;
     }
 }
+
+
+static int handle_client_write(Client *client) {
+    while (client->write_sent < client->write_size) {
+
+        ssize_t bytes = send(
+            client->fd,
+            client->write_buffer + client->write_sent,
+            client->write_size - client->write_sent,
+            0
+        );
+
+        if (bytes > 0) {
+            client->write_sent += (size_t)bytes;
+
+            printf("Cliente fd=%d: %zd bytes enviados "
+                   "(total: %zu/%zu)\n",
+                   client->fd, bytes,
+                   client->write_sent,
+                   client->write_size);
+
+            continue;
+        }
+
+        if (bytes == -1 && errno == EINTR)
+            continue;
+
+        if (bytes == -1 &&
+            (errno == EAGAIN || errno == EWOULDBLOCK))
+            return 0;
+
+        perror("send");
+        return -1;
+    }
+
+    return 1;
+}
+
+
+static int prepare_http_response(Client *client) {
+    const char *body = "Hola MiniHTTPd!";
+
+    size_t body_size = strlen(body);
+
+    int header_size = snprintf(
+        NULL,
+        0,
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        body_size
+    );
+
+    if (header_size < 0)
+        return -1;
+
+    size_t total_size = (size_t)header_size + body_size;
+
+    client->write_buffer = malloc(total_size + 1);
+
+    if (client->write_buffer == NULL) {
+        perror("malloc response");
+        return -1;
+    }
+
+    snprintf(
+        client->write_buffer,
+        (size_t)header_size + 1,
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        body_size
+    );
+
+    memcpy(
+        client->write_buffer + header_size,
+        body,
+        body_size
+    );
+
+    client->write_buffer[total_size] = '\0';
+
+    client->write_size = total_size;
+    client->write_sent = 0;
+    client->state = CLIENT_WRITING;
+
+    return 0;
+}
+
+
+static int modify_client_events(int epoll_fd, Client *client,
+                                uint32_t events) {
+    struct epoll_event event = {0};
+
+    event.events = events | EPOLLRDHUP;
+    event.data.ptr = client;
+
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD,
+                  client->fd, &event) == -1) {
+        perror("epoll_ctl modify client");
+        return -1;
+    }
+    return 0;
+}
+
 
 /* Cerrar un cliente y aplazar la liberacion de su estructura */
 static void close_client(int epoll_fd, Client *client,
@@ -127,7 +240,8 @@ static void close_client(int epoll_fd, Client *client,
 
     free(client->read_buffer);
     client->read_buffer = NULL;
-
+    free(client->write_buffer);
+    client->write_buffer = NULL;
     client->next = *pending;
     *pending = client;
 
@@ -140,14 +254,16 @@ static void free_pending_clients(Client **pending)
     while (*pending) {
         Client *client = *pending;
         *pending = client->next;
+        free(client->read_buffer);
+        free(client->write_buffer);
+
         free(client);
     }
 }
 
 /* Aceptar conexiones entrantes */
 static void accept_clients(int server_fd, int epoll_fd,
-                           Client **clients)
-{
+                           Client **clients) {
     while (1) {
         int client_fd = accept(server_fd, NULL, NULL);
 
@@ -288,29 +404,101 @@ int server_start(void)
         }
 
         for (int i = 0; i < count; i++) {
-
             if (events[i].data.ptr == NULL) {
                 accept_clients(server_fd, epoll_fd, &clients);
                 continue;
             }
 
             Client *client = events[i].data.ptr;
+            uint32_t flags = events[i].events;
 
             if (client->closing)
                 continue;
 
-            if (events[i].events & (EPOLLIN | EPOLLRDHUP)) {
+            /* Error en el socket */
+            if (flags & EPOLLERR) {
+                close_client(epoll_fd, client,
+                            &clients, &pending);
+                continue;
+            }
+
+            /* ESTADO 1: RECEPCION */
+            if (client->state == CLIENT_READING &&
+                (flags & (EPOLLIN | EPOLLRDHUP))) {
+
                 if (handle_client_read(client) == -1) {
                     close_client(epoll_fd, client,
-                                 &clients, &pending);
+                                &clients, &pending);
+                    continue;
+                }
+
+                HTTPRequest request;
+                size_t consumed = 0;
+
+                HTTPParseResult result = http_parse_request(
+                    client->read_buffer,
+                    client->read_size,
+                    &request,
+                    &consumed
+                );
+
+                if (result == HTTP_PARSE_ERROR) {
+                    fprintf(stderr,
+                            "Peticion HTTP invalida: fd=%d\n",
+                            client->fd);
+
+                    close_client(epoll_fd, client,
+                                &clients, &pending);
+                    continue;
+                }
+
+                if (result == HTTP_PARSE_COMPLETE) {
+
+                    printf("\nPeticion HTTP recibida:\n");
+                    printf("Metodo: %s\n", request.method);
+                    printf("URI: %s\n", request.uri);
+                    printf("Version: %s\n", request.version);
+
+                    printf("Bytes consumidos: %zu\n", consumed);
+
+                    if (prepare_http_response(client) == -1) {
+                        close_client(epoll_fd, client,
+                                    &clients, &pending);
+                        continue;
+                    }
+
+                    if (modify_client_events(
+                            epoll_fd,
+                            client,
+                            EPOLLOUT
+                        ) == -1) {
+
+                        close_client(epoll_fd, client,
+                                    &clients, &pending);
+                        continue;
+                    }
+                }
+            }
+
+            /* ESTADO 2: TRANSMISION */
+            else if (client->state == CLIENT_WRITING &&
+                    (flags & EPOLLOUT)) {
+
+                int result = handle_client_write(client);
+
+                if (result == -1 || result == 1) {
+                    close_client(epoll_fd, client,
+                                &clients, &pending);
                     continue;
                 }
             }
 
+            /* Cierre de la conexión */
             if (!client->closing &&
-                (events[i].events & (EPOLLERR | EPOLLHUP))) {
+                (flags & EPOLLHUP)) {
+
                 close_client(epoll_fd, client,
-                             &clients, &pending);
+                            &clients, &pending);
             }
         }
 
@@ -324,6 +512,7 @@ int server_start(void)
         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client->fd, NULL);
         close(client->fd);
         free(client->read_buffer);
+        free(client->write_buffer);
         free(client);
     }
 

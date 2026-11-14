@@ -11,12 +11,14 @@ typedef enum {
 
 typedef struct Client {
     int fd;
-
     ClientState state;
 
     char *read_buffer;
     size_t read_size;
     size_t read_capacity;
+    char *write_buffer;
+    size_t write_size;
+    size_t write_sent;
 
     int closing;
 
