@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiniHTTPd — Servidor HTTP/1.1 en C11</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+    <header class="hero">
+        <div class="container">
+            <span class="badge">C11 & Linux Systems Programming</span>
+            <h1>MiniHTTPd</h1>
+            <p class="subtitle">Servidor Web HTTP/1.1 de Alto Rendimiento, Conexiones Persistentes y I/O Event-Driven</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card architecture-section">
+            <h2>Arquitectura del Sistema</h2>
+            <p>MiniHTTPd es un servidor web estático liviano implementado en lenguaje <strong>C11</strong> para entornos Linux. Diseñado desde cero utilizando llamadas al sistema posix nativas para maximizar la eficiencia y el control de recursos a bajo nivel.</p>
+            <div class="image-wrapper">
+                <img src="/image.png" alt="Ilustración de MiniHTTPd">
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Características Técnicas</h2>
+            <div class="grid">
+                <div class="feature-box">
+                    <h3>Sockets TCP & I/O</h3>
+                    <p>Manejo directo de sockets POSIX en IPv4, configurados en modo no bloqueante para una transmisión eficiente de datos.</p>
+                </div>
+                <div class="feature-box">
+                    <h3>Multiplexación epoll</h3>
+                    <p>Uso de <code>epoll(7)</code> en modo Edge-Triggered (ET) o Level-Triggered (LT) para escalar eficientemente a miles de conexiones concurrentes.</p>
+                </div>
+                <div class="feature-box">
+                    <h3>HTTP/1.1 Keep-Alive</h3>
+                    <p>Soporte para conexiones persistentes mediante encabezados <code>Connection: keep-alive</code>, reduciendo el overhead de handshakes TCP.</p>
+                </div>
+                <div class="feature-box">
+                    <h3>Seguridad de Rutas</h3>
+                    <p>Resolución segura de rutas de archivos con <code>realpath()</code> para prevenir vulnerabilidades de Directory Traversal (<code>../</code>).</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Especificación del Servidor C11</h2>
+            <p>El núcleo del servidor ejecuta una arquitectura monohilo asíncrona basada en eventos, utilizando estructuras de datos optimizadas para la lectura e interpretación rápida de peticiones HTTP.</p>
+            <ul class="tech-list">
+                <li><strong>Estándar C:</strong> C11 (GCC / Clang).</li>
+                <li><strong>Métodos Soportados:</strong> <code>GET</code>.</li>
+                <li><strong>Códigos de Estado HTTP:</strong> <code>200 OK</code>, <code>400 Bad Request</code>, <code>403 Forbidden</code>, <code>404 Not Found</code>, <code>405 Method Not Allowed</code>, <code>500 Internal Server Error</code>.</li>
+                <li><strong>Transmisión de Datos:</strong> Mapeo directo y resolución de tipos MIME basada en la extensión del archivo.</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 MiniHTTPd Project — Servidor HTTP/1.1 Estático en C11 sobre Linux.</p>
+        </div>
+    </footer>
+
+</body>
+</html>

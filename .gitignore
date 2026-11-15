@@ -1,5 +1,7 @@
 # Archivos compilados
+build/
 *.o
+*.d
 minihttpd
 
 # Archivos temporales

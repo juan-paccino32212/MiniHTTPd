@@ -1,21 +1,59 @@
+
+# MiniHTTPd - Makefile
+
+# Compilador
 CC = gcc
 
-CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinclude
+# Directorios
+SRC_DIR = src
+INC_DIR = include
+BUILD_DIR = build
 
+# Ejecutable
 TARGET = minihttpd
 
-SOURCES = src/main.c src/server.c src/http.c
-OBJECTS = src/main.o src/server.o src/http.o
+# Opciones de compilacion
+CFLAGS = -Wall -Wextra -Wpedantic -std=c11
+CPPFLAGS = -I$(INC_DIR) -MMD -MP
+LDFLAGS =
+
+# Archivos fuente
+SOURCES = $(wildcard $(SRC_DIR)/*.c)
+
+# Objetos generados
+OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
+
+# Dependencias automaticas
+DEPS = $(OBJECTS:.o=.d)
+
+# Objetivos principales
+
+.PHONY: all clean run debug
 
 all: $(TARGET)
 
+# Enlazado del ejecutable
 $(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $(TARGET)
+	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 
-src/%.o: src/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
+# Compilacion individual de cada modulo
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+# Crear directorio de compilacion
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+# Incluir dependencias generadas por GCC
+-include $(DEPS)
+
+# Utilidades
+
+run: $(TARGET)
+	./$(TARGET)
+
+debug: CFLAGS += -g -O0
+debug: clean all
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
-
-.PHONY: all clean
+	rm -rf $(BUILD_DIR) $(TARGET)

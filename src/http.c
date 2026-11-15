@@ -231,6 +231,28 @@ static int validate_host_header(const HTTPRequest *request) {
     return host_count == 1;
 }
 
+static int validate_request_framing(const HTTPRequest *request) {
+    size_t content_length_count = 0;
+
+    for (size_t i = 0; i < request->header_count; i++) {
+        const HTTPHeader *header = &request->headers[i];
+
+        if (header_name_equals(header->name, "Transfer-Encoding"))
+            return 0;
+
+        if (header_name_equals(header->name, "Content-Length")) {
+            content_length_count++;
+
+            if (content_length_count > 1 ||
+                strcmp(header->value, "0") != 0) {
+                return 0;
+            }
+        }
+    }
+
+    return 1;
+}
+
 HTTPParseResult http_parse_request(const char *buffer,
     size_t buffer_size, HTTPRequest *request, size_t *consumed) {
 
@@ -266,6 +288,10 @@ HTTPParseResult http_parse_request(const char *buffer,
     }
 
     if (!validate_host_header(request)) {
+        return HTTP_PARSE_ERROR;
+    }
+
+    if (!validate_request_framing(request)) {
         return HTTP_PARSE_ERROR;
     }
 
